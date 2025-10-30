@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from app.core.config import cfg
 from app.rag.chains.llm_chain import RAGLightHybrid
+from app.rag.retrievers.hybrid_rrf import load_hybrid_from_env
 
 app = FastAPI(title="StepByStep RAG & QUIZ (Light-Hybrid)", version="1.0.0")
 
