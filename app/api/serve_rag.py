@@ -80,15 +80,23 @@ async def chat(body: ChatIn = Body(...)):
     result = await chain.arun(body.message)
     return ChatOut(answer=result["answer"], citations=result["citations"])
 
-@app.post("/v1/search")
-def search_debug(q: str, k: int = 5):
-    docs = hy._get_relevant_documents(q)
+# 상단에 추가
+from fastapi import Query
+
+# 기존 search_debug 교체
+@app.get("/v1/search")
+async def search_debug(q: str = Query(...), k: int = Query(5)):
+    retr = load_hybrid_from_env(top_k=k, candidate_k=cfg.CANDIDATE_K)  # 요청마다 k 반영
+    docs = retr._get_relevant_documents(q)
     out = []
-    for i,d in enumerate(docs,1):
+    for i, d in enumerate(docs, 1):
+        src = d.metadata.get("source") or "unknown_source"
         out.append({
             "rank": i,
-            "source": d.metadata.get("source"),
+            "source": _mask_abs_path(src),
+            "label": _pretty_source(src),
             "chunk_id": d.metadata.get("chunk_id"),
-            "preview": (d.page_content or "")[:160]
+            "score": d.metadata.get("score"),
+            "snippet": (d.page_content or "").replace("\n", " ")[:200],
         })
-    return {"q": q, "k": k, "results": out}
+    return {"status": "ok", "q": q, "k": k, "items": out}
