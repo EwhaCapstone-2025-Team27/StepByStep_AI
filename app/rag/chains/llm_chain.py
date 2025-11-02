@@ -50,10 +50,8 @@ class RAGLightHybrid:
 
         # 리트리버 준비
         if self.enable_bm25 or self.enable_rrf:
-            # .env 의 FAISS_DIR/BM25_DIRS/… 를 읽어서 하이브리드 구성
             self.retriever = load_hybrid_from_env(top_k=self.top_k, candidate_k=self.candidate_k)
         else:
-            # 순수 FAISS
             self.retriever = _FaissOnlyRetriever(cfg.FAISS_DIR, top_k=self.top_k)
 
         self.prompt = build_prompt()
@@ -72,9 +70,6 @@ class RAGLightHybrid:
         # /Users/... 같은 절대경로 제거
         return re.sub(r"/[^ ]+?/data/indexes/", "data/indexes/", s)
 
-    import re
-    from typing import List
-    from langchain_core.documents import Document
 
     async def arun(self, question: str):
         # 1. 검색 단계

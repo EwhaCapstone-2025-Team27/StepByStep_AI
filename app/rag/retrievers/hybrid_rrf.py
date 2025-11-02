@@ -1,71 +1,95 @@
 # app/rag/retrievers/hybrid_rrf.py
 from __future__ import annotations
 import os
-from typing import List, Sequence, Optional
-from pydantic import Field
-try:
-    # pydantic v2
-    from pydantic import ConfigDict
-    _MODEL_CONFIG = {"model_config": ConfigDict(arbitrary_types_allowed=True, extra="allow")}
-except Exception:
-    # pydantic v1 fallback
-    _MODEL_CONFIG = {"Config": type("Config", (), {"arbitrary_types_allowed": True, "extra": "allow"})}
+from typing import List, Sequence, Optional, Dict, Tuple
+from pathlib import Path
 
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
 
+# pydantic v1/v2 호환
+try:
+    from pydantic import ConfigDict, Field
+    _MODEL_CONFIG = {"model_config": ConfigDict(arbitrary_types_allowed=True, extra="allow")}
+except Exception:
+    from pydantic import Field
+    class _Cfg:
+        arbitrary_types_allowed = True
+        extra = "allow"
+    _MODEL_CONFIG = {"Config": _Cfg}
+
 from app.core.stores.faiss_store import FaissStore
-from app.rag.retrievers.multi_bm25_adapter import MultiBM25Retriever, load_bm25_retrievers_from_env
-from app.rag.retrievers.rrf import rrf_fuse
+from app.core.stores.bm25_store import BM25Store
 from app.rag.retrievers.utils import dict_to_doc
 
 
+def _key_of(r: Dict):
+    return r.get("doc_id") or (r.get("source") or r.get("src"), r.get("chunk_id"))
+
+
+def rrf_weighted(fa_rows: List[Dict], bm_rows: List[Dict], k: int, rrf_k: int, w_f: float, w_b: float) -> List[Dict]:
+    scores: Dict[Tuple, float] = {}
+    seen: Dict[Tuple, Tuple[int, Dict]] = {}
+    order = 0
+    for rows, w in ((fa_rows, w_f), (bm_rows, w_b)):
+        for i, r in enumerate(rows):
+            key = _key_of(r)
+            if key not in scores:
+                scores[key] = 0.0
+                seen[key] = (order, r)
+                order += 1
+            scores[key] += w * (1.0 / (rrf_k + (i + 1)))
+    top = sorted(scores.items(), key=lambda x: (-x[1], seen[x[0]][0]))[:k]
+    return [seen[k][1] for k, _ in top]
+
+
+def _read_dirs_from_env() -> List[str]:
+    env_dirs = (os.getenv("BM25_DIRS") or "").strip()
+    if env_dirs:
+        return [d.strip() for d in env_dirs.split(",") if d.strip()]
+    fp = os.getenv("BM25_DIRS_FILE")
+    if fp and Path(fp).exists():
+        return [ln.strip() for ln in Path(fp).read_text(encoding="utf-8").splitlines() if ln.strip()]
+    return []
+
+
 class HybridRRF(BaseRetriever):
-    """FAISS(벡터) + BM25(키워드) 결과를 RRF로 융합하는 리트리버"""
+    """FAISS + BM25를 가중 RRF로 융합하는 Retriever (Pydantic 친화형)"""
 
-    # ---- Pydantic 모델 필드 선언 (중요) ----
+    # === Pydantic 필드 선언 (중요: 'bm25_stores' 사용, 'bm25' 아님) ===
     faiss: FaissStore
-    bm25: MultiBM25Retriever
+    bm25_stores: List[BM25Store] = Field(default_factory=list)
 
-    # 파라미터들
-    top_k: int = Field(default=4)
-    candidate_k: int = Field(default=6)
-    rrf_k: int = Field(default=60)
+    top_k: int = 4
+    candidate_k: int = 6
+    rrf_k: int = 60
+    w_faiss: float = 0.7
+    w_bm25: float = 0.3
 
-    # 점수 정규화 여부(필요 시 확장)
-    use_cosine: bool = Field(default=False)
-
-    # pydantic 설정 (v2 / v1 호환)
     locals().update(_MODEL_CONFIG)
 
-    # BaseRetriever 인터페이스
     def _get_relevant_documents(self, query: str) -> List[Document]:
         # 1) FAISS 후보
-        faiss_rows = self.faiss.search(query, top_k=self.candidate_k, normalize=self.use_cosine)
-        faiss_docs = [dict_to_doc(r) for r in faiss_rows]
+        f_rows = self.faiss.search(query, top_k=self.candidate_k)
 
-        # 2) BM25 후보 (이미 Document로 반환됨)
-        bm25_docs = self.bm25._get_relevant_documents(query)
+        # 2) BM25 후보(모든 샤드에서 후보 합침)
+        b_rows: List[Dict] = []
+        for st in self.bm25_stores:
+            b_rows.extend(st.search(query, top_k=self.candidate_k))
 
-        # 3) RRF 융합
-        fused = rrf_fuse([faiss_docs, bm25_docs], k=self.rrf_k, top_k=self.top_k)
-        return fused
+        # 3) 가중 RRF로 최종 top_k 융합
+        fused = rrf_weighted(
+            fa_rows=f_rows,
+            bm_rows=b_rows,
+            k=self.top_k,
+            rrf_k=self.rrf_k,
+            w_f=self.w_faiss,
+            w_b=self.w_bm25,
+        )
+        return [dict_to_doc(r) for r in fused]
 
     async def _aget_relevant_documents(self, query: str) -> List[Document]:
         return self._get_relevant_documents(query)
-
-
-def _read_dirs_from_file(path: str) -> List[str]:
-    out: List[str] = []
-    if not path or not os.path.exists(path):
-        return out
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            s = line.strip()
-            if not s or s.startswith("#"):
-                continue
-            out.append(s)
-    return out
 
 
 def load_hybrid_from_env(
@@ -75,41 +99,21 @@ def load_hybrid_from_env(
     top_k: Optional[int] = None,
     candidate_k: Optional[int] = None,
 ) -> HybridRRF:
-    """
-    ENV 사용:
-      - FAISS_DIR=./data/indexes/merged/faiss
-      - BM25_DIRS=dir1,dir2,...  또는  BM25_DIRS_FILE=.bm25_dirs.txt
-      - TOP_K / CANDIDATE_K / RRF_K
-    """
-    # FAISS
-    faiss_dir = faiss_dir or os.getenv("FAISS_DIR")
-    if not faiss_dir:
-        raise ValueError("FAISS_DIR 환경변수가 비어 있습니다.")
-    faiss_store = FaissStore.load(faiss_dir)
+    """환경변수/인자를 읽어 HybridRRF 인스턴스를 생성하는 팩토리."""
+    faiss_dir = faiss_dir or os.getenv("FAISS_DIR", "./data/indexes/merged/faiss")
+    fa = FaissStore.load(faiss_dir)
 
-    # BM25
-    if bm25_dirs is None:
-        env_dirs = (os.getenv("BM25_DIRS") or "").strip()
-        if env_dirs:
-            dirs = [d.strip() for d in env_dirs.split(",") if d.strip()]
-        else:
-            # 파일 경유
-            bm25_file = os.getenv("BM25_DIRS_FILE")
-            dirs = _read_dirs_from_file(bm25_file) if bm25_file else []
-        if not dirs:
-            raise ValueError("BM25_DIRS / BM25_DIRS_FILE 둘 다 비어 있습니다.")
-    else:
-        dirs = list(bm25_dirs)
-
-    final_candidate_k = candidate_k if candidate_k is not None else int(os.getenv("CANDIDATE_K", "6"))
-
-    bm25_retriever = MultiBM25Retriever(dirs=dirs, candidate_k=int(os.getenv("CANDIDATE_K", "6")))
+    dirs = list(bm25_dirs) if bm25_dirs is not None else _read_dirs_from_env()
+    if not dirs:
+        raise ValueError("BM25_DIRS 또는 BM25_DIRS_FILE이 비어 있습니다.")
+    bm25s = [BM25Store.load(d) for d in dirs]
 
     return HybridRRF(
-        faiss=faiss_store,
-        bm25=bm25_retriever,
-        top_k=top_k if top_k is not None else int(os.getenv("TOP_K", "4")),
-        candidate_k=final_candidate_k,
+        faiss=fa,
+        bm25_stores=bm25s,
+        top_k=int(top_k or os.getenv("TOP_K", "4")),
+        candidate_k=int(candidate_k or os.getenv("CANDIDATE_K", "6")),
         rrf_k=int(os.getenv("RRF_K", "60")),
-        use_cosine=False,
+        w_faiss=float(os.getenv("W_FAISS", "0.7")),
+        w_bm25=float(os.getenv("W_BM25", "0.3")),
     )
