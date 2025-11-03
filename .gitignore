@@ -4,4 +4,9 @@ __pycache__/
 .env
 data/indexes/*
 data/Original/*
+data/Clean/*
 !data/indexes/.keep
+
+# RAG artifacts
+/data/Clean/
+/data/indexes/
