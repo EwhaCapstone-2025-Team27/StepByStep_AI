@@ -30,4 +30,3 @@ def health_check():
 
 app.include_router(rag_router, prefix="/api")
 app.include_router(quiz_router, prefix="/api/quiz", tags=["quiz"])
-EOF
