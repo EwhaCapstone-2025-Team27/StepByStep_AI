@@ -49,7 +49,7 @@ def _read_dirs_from_env() -> List[str]:
         return [d.strip() for d in env_dirs.split(",") if d.strip()]
     fp = os.getenv("BM25_DIRS_FILE")
     if fp and not os.path.isabs(fp):
-       fp = os.path.abspath(fp)
+        fp = os.path.abspath(fp)
     if fp and Path(fp).exists():
         return [ln.strip() for ln in Path(fp).read_text(encoding="utf-8").splitlines() if ln.strip()]
     return []
@@ -102,7 +102,7 @@ def load_hybrid_from_env(
     candidate_k: Optional[int] = None,
 ) -> HybridRRF:
     """환경변수/인자를 읽어 HybridRRF 인스턴스를 생성하는 팩토리."""
-    faiss_dir = faiss_dir or os.getenv("FAISS_DIR", "./data/indexes/merged/faiss")
+    faiss_dir = faiss_dir or os.getenv("FAISS_DIR", ".")
     fa = FaissStore.load(faiss_dir)
 
     dirs = list(bm25_dirs) if bm25_dirs is not None else _read_dirs_from_env()

@@ -2,6 +2,9 @@ from typing import Optional
 from fastapi import FastAPI, Body
 from pydantic import BaseModel
 import re, os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from app.core.config import cfg
 from app.rag.chains.llm_chain import RAGLightHybrid
