@@ -8,3 +8,4 @@ langchain-core
 langchain-openai
 faiss-cpu
 sentence-transformers
+openai
