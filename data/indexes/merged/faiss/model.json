@@ -1,0 +1,28 @@
+{
+  "model": "text-embedding-3-small",
+  "normalize": true,
+  "faiss": "HNSW",
+  "metric": "IP",
+  "similarity": "cosine",
+  "dim": 1536,
+  "hnsw": {
+    "M": 32,
+    "efC": 200,
+    "efS": 64
+  },
+  "_merged_sources": [
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/2022년성교육교재/faiss",
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/Comprehensive-Sexuality-Education-Facilitators-Manual/faiss",
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/Fabo Comprehensive Sexuality Education Toolkit-Trainers Instructional Guide/faiss",
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/IPPF_CSE-ACTIVITY-GUIDE_web_spreads/faiss",
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/SIECUS 성교육 가이드라인/faiss",
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/UNESCO International Technical Guidance on Sexuality Education/faiss",
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/UNFPA-MBMLMW_MOD3/faiss",
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/UNFPA CSE Participants Workbook/faiss",
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/성교육 가이드북/faiss",
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/화성시청소년성문화센터_내 몸 속 건강지키기(성매개감염증_질염)/faiss",
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/화성시청소년성문화센터_성적 의사소통 지침서/faiss",
+    "/Users/leekyoungsun/Desktop/study/StepByStep_RAG_QUIZ/data/indexes/화성시청소년성문화센터_피임이 필요해/faiss"
+  ],
+  "_merged_count": 12
+}
