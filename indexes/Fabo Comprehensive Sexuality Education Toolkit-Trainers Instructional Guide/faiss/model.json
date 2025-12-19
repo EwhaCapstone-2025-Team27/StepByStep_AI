@@ -1,0 +1,13 @@
+{
+  "model": "text-embedding-3-small",
+  "normalize": true,
+  "faiss": "HNSW",
+  "metric": "IP",
+  "similarity": "cosine",
+  "dim": 1536,
+  "hnsw": {
+    "M": 32,
+    "efC": 200,
+    "efS": 64
+  }
+}
